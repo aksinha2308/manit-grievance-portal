@@ -92,7 +92,9 @@ class ErpSync
 
                 continue;
             }
-            $dupe['e:' . $email][] = ['role' => $entry['role'], 'id_code' => $code, 'name' => $name, 'email' => $email];
+            // LOCAL FIX: find() no longer returns a role. Use the same rule as ErpDirectory (designation 2, 3, 4 = faculty).
+            $role = in_array($title, ['2', '3', '4'], true) ? 'faculty' : 'non_teaching';
+            $dupe['e:' . $email][] = ['role' => $role, 'id_code' => $code, 'name' => $name, 'email' => $email];
         }
         foreach ($dupe as $key => $list) {
             if (count($list) > 1) {
