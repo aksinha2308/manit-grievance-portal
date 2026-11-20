@@ -1,0 +1,123 @@
+/* MANIT Grievance Redressal Portal: formal navy and gold theme (loaded after Bootstrap 5) */
+:root {
+    --mn-navy: #12294f;
+    --mn-navy-dark: #0b1d3a;
+    --mn-navy-light: #1b3a6e;
+    --mn-gold: #c9a227;
+    --mn-gold-pale: #e8d9a0;
+    --mn-gold-text: #7a5c00;
+    --mn-bg: #f4f6f9;
+    --mn-border: #d5dae3;
+    --bs-primary: #12294f;
+    --bs-primary-rgb: 18, 41, 79;
+    --bs-link-color: #12294f;
+    --bs-link-hover-color: #0b1d3a;
+    --bs-link-color-rgb: 18, 41, 79;
+    --bs-body-color: #1b2433;
+    --bs-border-radius: 4px;
+    --bs-border-radius-sm: 3px;
+    --bs-border-radius-lg: 6px;
+}
+
+body {
+    background: var(--mn-bg);
+    color: #1b2433;
+    font-family: 'Source Sans 3', 'Noto Sans Devanagari', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    font-size: 1.0625rem;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+main { flex: 1 0 auto; }
+
+h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6 {
+    font-family: 'Noto Serif', 'Noto Serif Devanagari', Georgia, serif;
+    color: var(--mn-navy);
+    font-weight: 700;
+}
+.hi { font-family: 'Noto Serif Devanagari', 'Noto Sans Devanagari', serif; }
+.hi-sans { font-family: 'Noto Sans Devanagari', sans-serif; }
+
+/* Header */
+.site-header { background: #fff; border-top: 6px solid var(--mn-navy); }
+.site-header .logo { width: 84px; height: auto; flex: 0 0 auto; }
+.site-header .name-hi { font-family: 'Noto Serif Devanagari', serif; font-weight: 700; font-size: 1.9rem; line-height: 1.3; color: var(--mn-navy); }
+.site-header .name-en { font-family: 'Noto Serif', serif; font-weight: 700; font-size: 1.3rem; letter-spacing: .02em; color: var(--mn-navy); }
+@media (max-width: 767px) {
+    .site-header .logo { width: 56px; }
+    .site-header .name-hi { font-size: 1.15rem; }
+    .site-header .name-en { font-size: .9rem; }
+}
+
+/* Navigation bar */
+.brand-bar { background: var(--mn-navy); border-bottom: 4px solid var(--mn-gold); }
+.brand-bar .portal-title { color: #fff; text-decoration: none; display: flex; flex-direction: column; line-height: 1.25; padding: .4rem 0; }
+.brand-bar .portal-title .hi { font-size: .85rem; color: var(--mn-gold-pale); }
+.brand-bar .portal-title .en { font-family: 'Noto Serif', serif; font-weight: 700; font-size: 1.1rem; }
+.brand-bar .btn-outline-light { --bs-btn-border-color: rgba(255, 255, 255, .55); }
+.brand-bar .btn-outline-light:hover { color: var(--mn-navy); }
+.brand-bar .btn-light { --bs-btn-color: var(--mn-navy); }
+
+/* Buttons */
+.btn { font-weight: 600; min-height: 38px; }
+.btn-primary {
+    --bs-btn-bg: var(--mn-navy); --bs-btn-border-color: var(--mn-navy); --bs-btn-color: #fff;
+    --bs-btn-hover-bg: var(--mn-navy-dark); --bs-btn-hover-border-color: var(--mn-navy-dark); --bs-btn-hover-color: #fff;
+    --bs-btn-active-bg: var(--mn-navy-dark); --bs-btn-active-border-color: var(--mn-navy-dark);
+    --bs-btn-disabled-bg: #5b6b88; --bs-btn-disabled-border-color: #5b6b88;
+    --bs-btn-focus-shadow-rgb: 201, 162, 39;
+    border-bottom: 3px solid var(--mn-gold);
+}
+.btn-outline-primary {
+    --bs-btn-color: var(--mn-navy); --bs-btn-border-color: var(--mn-navy);
+    --bs-btn-hover-bg: var(--mn-navy); --bs-btn-hover-border-color: var(--mn-navy); --bs-btn-hover-color: #fff;
+    --bs-btn-active-bg: var(--mn-navy); --bs-btn-active-border-color: var(--mn-navy); --bs-btn-active-color: #fff;
+    --bs-btn-focus-shadow-rgb: 201, 162, 39;
+    border-width: 2px;
+}
+.btn:focus-visible, .form-control:focus, .form-select:focus, .form-check-input:focus {
+    box-shadow: 0 0 0 .25rem rgba(201, 162, 39, .45);
+    border-color: var(--mn-gold-text);
+}
+.form-check-input:checked { background-color: var(--mn-navy); border-color: var(--mn-navy); }
+.form-control, .form-select { border-color: #8a94a6; min-height: 42px; }
+.form-label { font-weight: 600; }
+
+/* Cards, tables, tabs */
+.card { border: 1px solid var(--mn-border); border-top: 4px solid var(--mn-navy); border-radius: 4px; box-shadow: none; background: #fff; }
+.card .card { border-top-width: 1px; }
+.table > thead { background: #eef1f6; color: var(--mn-navy); }
+.table > thead th { font-weight: 700; border-bottom: 2px solid var(--mn-navy); }
+.table-hover > tbody > tr:hover > * { --bs-table-hover-bg: #f4f6f9; }
+.nav-tabs .nav-link { color: var(--mn-navy); font-weight: 600; }
+.nav-tabs .nav-link.active { color: var(--mn-navy); border-bottom: 3px solid var(--mn-gold); font-weight: 700; }
+.nav-pills .nav-link { color: var(--mn-navy); font-weight: 600; }
+.nav-pills .nav-link.active { background: var(--mn-navy); color: #fff; border-bottom: 3px solid var(--mn-gold); }
+.badge.text-bg-primary { background-color: var(--mn-navy) !important; }
+.alert { border-radius: 4px; }
+.alert-info { background: #e6eef9; border-color: #b8c9e4; color: #12294f; }
+a { text-underline-offset: 2px; }
+
+/* Home page */
+.hero { background: #fff; border: 1px solid var(--mn-border); border-top: 4px solid var(--mn-navy); border-radius: 4px; padding: 2.25rem; }
+.hero .eyebrow { font-weight: 600; font-size: .85rem; letter-spacing: .04em; color: var(--mn-gold-text); }
+.hero h1 { font-family: 'Noto Serif Devanagari', serif; font-size: 2.3rem; line-height: 1.3; margin: .4rem 0 0; }
+.hero h2 { font-size: 1.75rem; margin: 0; }
+.gold-rule { width: 96px; height: 4px; background: var(--mn-gold); margin: .9rem 0; }
+.role-card { border-top-color: var(--mn-navy); }
+.role-card .role-hi { font-family: 'Noto Serif Devanagari', serif; font-weight: 700; font-size: 1.3rem; color: var(--mn-navy); }
+.role-card .role-en { font-family: 'Noto Serif', serif; font-weight: 700; color: var(--mn-navy); }
+.step { border-left: 3px solid var(--mn-gold); padding-left: 1rem; }
+.step .num { font-family: 'Noto Serif', serif; font-weight: 700; font-size: 1.9rem; color: var(--mn-navy); line-height: 1.1; }
+
+/* Footer */
+.site-footer { background: var(--mn-navy-dark); border-top: 4px solid var(--mn-gold); color: #d7dde8; margin-top: 2rem; }
+.site-footer .logo-sm { width: 52px; height: 52px; object-fit: contain; background: #fff; border-radius: 50%; padding: 3px; }
+.site-footer .name-hi { font-family: 'Noto Serif Devanagari', serif; font-weight: 700; color: #fff; }
+.site-footer a { color: var(--mn-gold-pale); }
+
+@media print {
+    .site-header .logo { width: 56px; }
+    .site-footer { display: none; }
+    body { background: #fff; }
+}

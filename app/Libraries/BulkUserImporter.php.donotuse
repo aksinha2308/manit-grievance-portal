@@ -1,0 +1,322 @@
+<?php
+
+namespace App\Libraries;
+
+use App\Models\UserModel;
+use Config\Database;
+use RuntimeException;
+
+/**
+ * Bulk creation of authority accounts (and the posts they hold) from an Excel/CSV template.
+ *
+ * Flow: upload -> parse() validates every row and stores the result under writable/imports/<token>.json
+ * (nothing is saved to the database) -> admin sees counts and an error report -> commit($token) re-checks
+ * and creates everything in ONE transaction. One errors anywhere = nothing is created.
+ *
+ * One row = one post. Rows with the same Username describe one user holding several posts.
+ */
+class BulkUserImporter
+{
+    public const HEADERS = ['Username', 'Full Name', 'Email', 'Post', 'Department or Hostel'];
+
+
+    // ---------------------------------------------------------------------
+    // Template
+    // ---------------------------------------------------------------------
+
+    public static function template(): string
+    {
+        $db   = Database::connect();
+        $desg = $db->query('SELECT name, scope_type FROM posts WHERE active AND NOT is_director ORDER BY name')->getResultArray();
+        $dir  = $db->query('SELECT name, scope_type FROM posts WHERE active AND is_director')->getResultArray();
+        $desg = array_merge($desg, $dir);
+
+        $deps = array_column($db->query('SELECT depname FROM establishment.dpcode ORDER BY lower(depname)')->getResultArray(), 'depname');
+        $host = array_column($db->query('SELECT name FROM hostels WHERE active ORDER BY lower(name)')->getResultArray(), 'name');
+
+        $lists = [['Post', 'Needs in the last column', 'Departments', 'Hostels']];
+        $max   = max(count($desg), count($deps), count($host), 1);
+        for ($i = 0; $i < $max; $i++) {
+            $d    = $desg[$i] ?? null;
+            $need = $d === null ? '' : match ($d['scope_type']) {
+                'department' => 'a department',
+                'hostel'     => 'a hostel',
+                default      => 'nothing (leave blank)',
+            };
+            $lists[] = [$d['name'] ?? '', $need, $deps[$i] ?? '', $host[$i] ?? ''];
+        }
+
+        $instructions = [
+            ['How to fill the Users sheet'],
+            ['One row = one post. To give a person several posts, repeat their Username on several rows.'],
+            ['Username, Full Name, Email: required. Email is the institute Google account (@' . config('Google')->staffDomain . ') the person signs in with; it must be unique. There are no passwords.'],
+            ['Post: pick from the drop-down. Leave blank to create the account only (assign posts later).'],
+            ['Department or Hostel: for "Head of Department"-type posts give a department from establishment.dpcode; for "Warden"-type posts give a hostel; otherwise leave it blank. See the Lists sheet.'],
+            ['A post can have only one holder. Rows for posts that already have a holder are reported as errors.'],
+            ['Nothing is saved until you review the preview and confirm.'],
+        ];
+
+        return SimpleXlsx::write([
+            [
+                'name'        => 'Users',
+                'header'      => true,
+                'rows'        => [self::HEADERS, ['hod.cs', 'Example Person', 'person@' . config('Google')->staffDomain, $desg[0]['name'] ?? '', '']],
+                'widths'      => [18, 26, 32, 34, 28],
+                'validations' => [
+                    ['sqref' => 'D2:D1000', 'formula' => 'Lists!$A$2:$A$' . max(2, count($desg) + 1)],
+                ],
+            ],
+            ['name' => 'Lists', 'header' => true, 'rows' => $lists, 'widths' => [34, 26, 30, 30]],
+            ['name' => 'Instructions', 'header' => false, 'rows' => $instructions, 'widths' => [140]],
+        ]);
+    }
+
+    // ---------------------------------------------------------------------
+    // Parse and validate
+    // ---------------------------------------------------------------------
+
+    /**
+     * @return array{token:string,users:int,posts:int,rows:int,errors:list<array{row:int,message:string}>}
+     */
+    public static function parse(string $path, string $extension, int $adminId): array
+    {
+        $extension = strtolower($extension);
+        $rows      = $extension === 'csv' ? SimpleXlsx::readCsv($path) : SimpleXlsx::read($path, 'Users');
+
+        if ($rows === []) {
+            throw new RuntimeException('The file is empty.');
+        }
+
+        // Header check (row order and spelling), case-insensitive
+        $first  = array_key_first($rows);
+        $header = array_map(static fn ($h) => strtolower(trim((string) $h)), array_slice($rows[$first], 0, count(self::HEADERS)));
+        // Spreadsheets made before the rename call the fourth column "Designation": still accepted.
+        if (($header[3] ?? null) === 'designation') {
+            $header[3] = 'post';
+        }
+        if ($header !== array_map('strtolower', self::HEADERS)) {
+            throw new RuntimeException('The columns do not match the template. Download the template again and keep its first row: ' . implode(', ', self::HEADERS) . '.');
+        }
+        unset($rows[$first]);
+
+        $db    = Database::connect();
+        $errors = [];
+        $users  = [];   // key => record
+        $postsInFile = [];
+        $emailsInFile = [];
+
+        $desgByName = [];
+        foreach ($db->query('SELECT id, name, scope_type, active FROM posts')->getResultArray() as $d) {
+            $desgByName[mb_strtolower($d['name'])] = $d;
+        }
+        $departments = [];
+        foreach ($db->query('SELECT dept AS id, depname AS name FROM establishment.dpcode')->getResultArray() as $d) {
+            $departments[mb_strtolower($d['name'])] = $d;
+        }
+        $hostels = [];
+        foreach ($db->query('SELECT id, name, active FROM hostels')->getResultArray() as $h) {
+            $hostels[mb_strtolower($h['name'])] = $h;
+        }
+
+        $rowCount = 0;
+        foreach ($rows as $rowNo => $cells) {
+            $cells = array_pad(array_map(static fn ($c) => trim((string) $c), array_slice($cells, 0, count(self::HEADERS))), count(self::HEADERS), '');
+            if (implode('', $cells) === '') {
+                continue; // blank line
+            }
+            $rowCount++;
+            [$username, $fullName, $email, $post, $where] = $cells;
+            $email = strtolower($email);
+            $rowErrors = [];
+
+            if ($username === '' || ! preg_match(UserService::USERNAME_PATTERN, $username)) {
+                $rowErrors[] = 'Username is missing or invalid (3-60 characters: letters, digits, dot, dash, underscore).';
+            }
+            if ($fullName === '' || mb_strlen($fullName) > 150) {
+                $rowErrors[] = 'Full Name is required (up to 150 characters).';
+            }
+            if ($email !== '' && (! filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 190)) {
+                $rowErrors[] = 'Email is not valid.';
+            } elseif ($email !== '' && GoogleAuth::domainKind($email) !== 'staff') {
+                $rowErrors[] = 'Email must be an institute staff address ending in @' . config('Google')->staffDomain . '.';
+            }
+
+            // Post
+            $seat = null;
+            if ($post !== '') {
+                $d = $desgByName[mb_strtolower($post)] ?? null;
+                if ($d === null || ! is_true($d['active'])) {
+                    $rowErrors[] = "Post \"{$post}\" does not exist or is inactive.";
+                } else {
+                    $scopeId = null;
+                    if ($d['scope_type'] === 'department') {
+                        $dep   = $departments[mb_strtolower($where)] ?? null;
+                        $usable = $dep !== null;
+                        if ($where === '' || ! $usable) {
+                            $rowErrors[] = "Department \"{$where}\" was not found in the department list" . ($dep !== null ? ' for this post.' : '.');
+                        } else {
+                            $scopeId = (int) $dep['id'];
+                        }
+                    } elseif ($d['scope_type'] === 'hostel') {
+                        if ($where === '' || ! isset($hostels[mb_strtolower($where)]) || ! is_true($hostels[mb_strtolower($where)]['active'])) {
+                            $rowErrors[] = "Hostel \"{$where}\" was not found.";
+                        } else {
+                            $scopeId = (int) $hostels[mb_strtolower($where)]['id'];
+                        }
+                    } elseif ($where !== '') {
+                        $rowErrors[] = '"' . $d['name'] . '" is a single post: leave Department or Hostel blank.';
+                    }
+
+                    if ($rowErrors === [] || ($d['scope_type'] === null || $scopeId !== null)) {
+                        $key = $d['id'] . ':' . ($scopeId ?? 0);
+                        if (($d['scope_type'] === null || $scopeId !== null)) {
+                            if (isset($postsInFile[$key])) {
+                                $rowErrors[] = 'This post also appears on row ' . $postsInFile[$key] . '. A post can have only one holder.';
+                            } else {
+                                $holder = $db->query(
+                                    'SELECT u.full_name FROM post_holders a JOIN users u ON u.id = a.user_id
+                                      WHERE a.post_id = ? AND COALESCE(a.scope_id,0) = ? AND a.active',
+                                    [$d['id'], $scopeId ?? 0]
+                                )->getRow('full_name');
+                                if ($holder !== null) {
+                                    $rowErrors[] = 'This post is already held by ' . $holder . '.';
+                                } else {
+                                    $postsInFile[$key] = $rowNo;
+                                    $seat = ['post_id' => (int) $d['id'], 'scope_id' => $scopeId, 'label' => PostService::label($d['name'], $d['scope_type'], $scopeId), 'row' => $rowNo];
+                                }
+                            }
+                        }
+                    }
+                }
+            } elseif ($where !== '') {
+                $rowErrors[] = 'Department or Hostel given without a Post.';
+            }
+
+            // User consistency across rows
+            if ($username !== '' && preg_match(UserService::USERNAME_PATTERN, $username)) {
+                $ukey = mb_strtolower($username);
+                if (! isset($users[$ukey])) {
+                    $users[$ukey] = [
+                        'username' => $username, 'full_name' => $fullName, 'email' => $email,
+                        'posts' => [], 'row' => $rowNo,
+                    ];
+                    if ($email === '') {
+                        $rowErrors[] = 'Email is required: the person signs in with this Google account.';
+                    }
+                    if ($db->query('SELECT 1 FROM users WHERE lower(username) = ?', [$ukey])->getRowArray() !== null) {
+                        $rowErrors[] = "Username \"{$username}\" already exists.";
+                    }
+                    if ($email !== '') {
+                        $ekey = mb_strtolower($email);
+                        if (isset($emailsInFile[$ekey])) {
+                            $rowErrors[] = 'This email is also used on row ' . $emailsInFile[$ekey] . '.';
+                        } elseif ($db->query('SELECT 1 FROM users WHERE lower(email) = ?', [$ekey])->getRowArray() !== null) {
+                            $rowErrors[] = "Email \"{$email}\" is already used by another account.";
+                        }
+                        $emailsInFile[$ekey] = $rowNo;
+                    }
+                } else {
+                    $u = &$users[$ukey];
+                    if (($fullName !== '' && $fullName !== $u['full_name']) || ($email !== '' && $email !== $u['email'])) {
+                        $rowErrors[] = "Name or email differs from row {$u['row']} for the same username. Repeat identical details or leave them blank.";
+                    }
+                    unset($u);
+                }
+                if ($seat !== null && $rowErrors === []) {
+                    $users[$ukey]['posts'][] = $seat;
+                }
+            }
+
+            foreach ($rowErrors as $message) {
+                $errors[] = ['row' => (int) $rowNo, 'message' => $message];
+            }
+        }
+
+        if ($rowCount === 0) {
+            throw new RuntimeException('The file has no data rows.');
+        }
+
+        $postCount = array_sum(array_map(static fn ($u) => count($u['posts']), $users));
+        $token = ImportStore::save(['users' => array_values($users), 'ok' => $errors === []], $adminId);
+
+        return ['token' => $token, 'users' => count($users), 'posts' => $postCount, 'rows' => $rowCount, 'errors' => $errors];
+    }
+
+    /**
+     * Load a stored preview (for the confirm screen).
+     *
+     * @return array<string,mixed>
+     */
+    public static function load(string $token, int $adminId): array
+    {
+        return ImportStore::load($token, $adminId);
+    }
+
+    public static function discard(string $token): void
+    {
+        ImportStore::discard($token);
+    }
+
+    /**
+     * Create everything in one transaction.
+     *
+     * @return array{created:int,posts:int}
+     */
+    public static function commit(string $token, int $adminId): array
+    {
+        $data = self::load($token, $adminId);
+        if (! isset($data['users'])) {
+            throw new RuntimeException('This upload is not an authority upload. Please upload the file again.');
+        }
+        if (empty($data['ok'])) {
+            throw new RuntimeException('The file still has errors. Fix them and upload again.');
+        }
+
+        $db        = Database::connect();
+        $model     = new UserModel();
+        $posts     = 0;
+
+        $db->transStart();
+        try {
+            foreach ($data['users'] as $u) {
+                // Re-check against the database: things may have changed since the preview
+                if ($db->query('SELECT 1 FROM users WHERE lower(username) = lower(?)', [$u['username']])->getRowArray() !== null) {
+                    throw new RuntimeException("Username \"{$u['username']}\" was created by someone else since the preview. Please upload again.");
+                }
+
+                $model->insert([
+                    'username'             => $u['username'],
+                    'full_name'            => $u['full_name'],
+                    'email'                => $u['email'],
+                    'password_hash'        => UserService::noPassword(),
+                    'is_admin'             => pg_flag(false),
+                    'active'               => pg_flag(true),
+                    'must_change_password' => pg_flag(false),
+                ]);
+                $id = (int) $model->getInsertID();
+                AuditLogger::log('create', 'user', $id, null, ['username' => $u['username'], 'full_name' => $u['full_name'], 'via' => 'bulk upload']);
+
+                foreach ($u['posts'] as $p) {
+                    PostService::assign($p['post_id'], $p['scope_id'], $id);
+                    $posts++;
+                }
+
+            }
+            AuditLogger::log('bulk_import', 'user', null, null, ['users' => count($data['users']), 'posts' => $posts]);
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            throw $e instanceof RuntimeException ? $e : new RuntimeException('The upload could not be saved and nothing was created.');
+        }
+        $db->transComplete();
+
+        if (! $db->transStatus()) {
+            throw new RuntimeException('The upload could not be saved and nothing was created.');
+        }
+
+        self::discard($token);
+
+        return ['created' => count($data['users']), 'posts' => $posts];
+    }
+
+    // ---------------------------------------------------------------------
+}

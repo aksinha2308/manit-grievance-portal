@@ -1,0 +1,6 @@
+After extracting the patch into C:\ (overwrite), DELETE these 3 old files (they were renamed):
+  app\Controllers\Admin\Designations.php
+  app\Views\admin\designations\   (the whole folder)
+  app\Libraries\DesignationService.php
+Then run:  php spark migrate     (migration 10 renames the database tables/columns; no data changes)
+Restart the server. Roll back with:  php spark migrate:rollback
