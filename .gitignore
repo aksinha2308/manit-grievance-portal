@@ -136,3 +136,4 @@ _modules/*
 *.orig
 /dump-*.sql
 /demo/DEMO-LOGINS.txt
+/local-kit/local-settings.txt
