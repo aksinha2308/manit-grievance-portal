@@ -1,0 +1,12 @@
+# LOCAL SETTINGS. Copy this file to  local-settings.txt  (same folder) and fill it in. Lines starting with # are notes.
+# Everything after the = sign, no quotes, no spaces around it.
+
+# --- The administrator: an institute staff e-mail that can sign in with real Google ---
+# The portal lets this one Google account into the administrator page (http://localhost:8080/admin-login).
+# Leave empty to skip: the ordinary and authority screens still work, but the admin screens cannot be opened.
+ADMIN_EMAIL=
+
+# --- Google sign-in client (from institute IT). Leave BOTH empty if you do not have it yet ---
+# Authorised redirect URI registered at Google must be exactly:  http://localhost:8080/auth/google/callback
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=

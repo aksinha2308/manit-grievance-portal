@@ -1,0 +1,13 @@
+--- /home/claude/live/app/Libraries/Erp/ErpSync.php	2026-11-10 10:55:41.000000000 +0000
++++ app/Libraries/Erp/ErpSync.php	2026-11-20 05:27:29.815337645 +0000
+@@ -92,7 +92,9 @@
+ 
+                 continue;
+             }
+-            $dupe['e:' . $email][] = ['role' => $entry['role'], 'id_code' => $code, 'name' => $name, 'email' => $email];
++            // LOCAL FIX: find() no longer returns a role. Use the same rule as ErpDirectory (designation 2, 3, 4 = faculty).
++            $role = in_array($title, ['2', '3', '4'], true) ? 'faculty' : 'non_teaching';
++            $dupe['e:' . $email][] = ['role' => $role, 'id_code' => $code, 'name' => $name, 'email' => $email];
+         }
+         foreach ($dupe as $key => $list) {
+             if (count($list) > 1) {
