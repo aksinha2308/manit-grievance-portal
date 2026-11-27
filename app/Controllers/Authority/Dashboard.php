@@ -14,7 +14,8 @@ use RuntimeException;
 /**
  * Authority home: the grievances at the posts the logged-in authority holds.
  * Tabs: needs action / waiting for the submitter / earlier (handled at my posts, since moved on or disposed),
- * plus "All grievances" (view only) for the Director. Search by reference or name, filter by type / overdue.
+ * plus "All grievances" (view only): for the Director every grievance, for other authorities the grievances at or
+ * below their own level. Search by reference or name, filter by type / overdue.
  */
 class Dashboard extends BaseController
 {
@@ -88,7 +89,7 @@ class Dashboard extends BaseController
     private function listParams(int $userId): array
     {
         $director = WorkflowService::isDirector($userId);
-        $tabs     = $director ? ['action', 'waiting', 'earlier', 'all'] : ['action', 'waiting', 'earlier'];
+        $tabs     = $director ? ['action', 'waiting', 'earlier', 'all'] : ['action', 'waiting', 'earlier', 'below'];
         $tab      = (string) $this->request->getGet('tab');
 
         return [

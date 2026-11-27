@@ -213,7 +213,7 @@ $back      = $back ?? 'authority';
                 <?php endif; ?>
             </div></div>
         <?php elseif ($g['status'] !== 'disposed'): ?>
-            <div class="alert alert-secondary small"><?= $isDirector ? 'Director oversight: you can view this grievance; you can act on it when it reaches the Director.' : 'This grievance is no longer at a post you hold; you can view it only.' ?></div>
+            <div class="alert alert-secondary small"><?= $isDirector ? 'Director oversight: you can view this grievance; you can act on it when it reaches the Director.' : 'You can view this grievance only. You can act on a grievance only while it is at a post you hold.' ?></div>
         <?php endif; ?>
     </div>
 </div>

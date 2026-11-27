@@ -9,6 +9,8 @@ $tabs = [
 ];
 if ($director) {
     $tabs['all'] = ['All grievances', $counts['all'] ?? 0];
+} else {
+    $tabs['below'] = ['All grievances', $counts['below'] ?? 0];
 }
 $filtered = $filters['q'] !== '' || $filters['type_id'] > 0 || $filters['overdue'];
 // Query string that keeps the current tab and filters (for paging and tab links)
@@ -65,7 +67,7 @@ $qs = static function (array $change) use ($tab, $filters): string {
     </div></div>
 <?php endif; ?>
 
-<?php if ($posts !== [] || $counts['earlier'] > 0): ?>
+<?php if ($posts !== [] || $counts['earlier'] > 0 || ($counts['below'] ?? 0) > 0): ?>
 <form class="row g-2 align-items-end mb-3" method="get" action="<?= site_url('authority') ?>" id="filters">
     <input type="hidden" name="tab" value="<?= esc($tab) ?>">
     <div class="col-sm-5 col-lg-4">
@@ -120,6 +122,8 @@ $qs = static function (array $change) use ($tab, $filters): string {
 <div class="card rounded-top-0">
     <?php if ($tab === 'all'): ?>
         <div class="card-body py-2 small text-muted border-bottom">Every grievance in the portal, view only. You can act on a grievance only when it reaches the Director.</div>
+    <?php elseif ($tab === 'below'): ?>
+        <div class="card-body py-2 small text-muted border-bottom">Grievances at or below your level, view only. You can act on a grievance only while it is at a post you hold.</div>
     <?php endif; ?>
     <?php if ($rows === []): ?>
         <div class="card-body text-muted">
@@ -134,7 +138,7 @@ $qs = static function (array $change) use ($tab, $filters): string {
                 <thead class="table-light">
                 <tr>
                     <th>Reference</th><th>Subject</th><th>Type</th><th>Submitted by</th>
-                    <?php if (in_array($tab, ['earlier', 'all'], true)): ?><th>Status</th><?php else: ?><th>At post</th><th>Time at this level</th><?php endif; ?>
+                    <?php if (in_array($tab, ['earlier', 'all', 'below'], true)): ?><th>Status</th><?php else: ?><th>At post</th><th>Time at this level</th><?php endif; ?>
                 </tr>
                 </thead>
                 <tbody>
@@ -150,7 +154,7 @@ $qs = static function (array $change) use ($tab, $filters): string {
                         <td><?= esc(mb_strimwidth((string) $r['subject'], 0, 70, '…')) ?></td>
                         <td class="small"><?= esc($r['type_name']) ?><div class="text-muted"><?= esc(role_label($r['role'])) ?></div></td>
                         <td class="small"><?= esc($r['submitter_name']) ?></td>
-                        <?php if (in_array($tab, ['earlier', 'all'], true)): ?>
+                        <?php if (in_array($tab, ['earlier', 'all', 'below'], true)): ?>
                             <td class="small">
                                 <?php if ($r['status'] === 'disposed'): ?>
                                     <span class="badge text-bg-success">Disposed</span>

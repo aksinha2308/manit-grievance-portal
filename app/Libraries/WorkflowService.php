@@ -90,6 +90,25 @@ class WorkflowService
     }
 
     /**
+     * SQL condition: grievance $g is "at or below" a level of its own type whose post user ? holds, i.e. it is now
+     * at, or (when disposed) was disposed at, a level whose number is not higher than that level's. The post's
+     * department / hostel scope is applied as everywhere else (holdsPostSql). $l is the current level of $g
+     * (escalation_levels, left-joined on g.current_level_id). If a disposed grievance's level was later removed from
+     * the route, the level of its last history entry is used. Needs one bound parameter (the user id).
+     * Used by the "All grievances" tab of authorities (tab 'below') and by canView().
+     */
+    public static function belowSql(string $g, string $l): string
+    {
+        return "EXISTS (SELECT 1 FROM escalation_levels bl
+                         WHERE bl.type_id = {$g}.type_id
+                           AND " . self::holdsPostSql($g, 'bl.post_id') . "
+                           AND COALESCE({$l}.level_no,
+                                   (SELECT ba.level_no FROM grievance_actions ba
+                                     WHERE ba.grievance_id = {$g}.id AND ba.level_no IS NOT NULL
+                                     ORDER BY ba.id DESC LIMIT 1)) <= bl.level_no)";
+    }
+
+    /**
      * SQL expression: seconds the grievance has spent at its current level, not counting time spent waiting
      * for the submitter.
      */
@@ -146,7 +165,8 @@ class WorkflowService
 
     /**
      * May this authority see the grievance? Yes if they now hold the post it is at, or a post it has
-     * passed through (any history row at that post, for the grievance's own department / hostel).
+     * passed through (any history row at that post, for the grievance's own department / hostel), or if it is
+     * at or below a level of its type whose post they hold (belowSql).
      * The Director sees every grievance (view only; acting still needs the grievance to be at the Director).
      */
     public static function canView(int $userId, int $grievanceId): bool
@@ -161,8 +181,9 @@ class WorkflowService
               WHERE g.id = ? AND (
                     (l.id IS NOT NULL AND ' . self::holdsPostSql('g', 'l.post_id') . ')
                  OR EXISTS (SELECT 1 FROM grievance_actions ga WHERE ga.grievance_id = g.id AND ga.post_id IS NOT NULL
-                               AND ' . self::holdsPostSql('g', 'ga.post_id') . '))',
-            [$grievanceId, $userId, $userId]
+                               AND ' . self::holdsPostSql('g', 'ga.post_id') . ')
+                 OR ' . self::belowSql('g', 'l') . ')',
+            [$grievanceId, $userId, $userId, $userId]
         )->getRowArray();
     }
 
@@ -191,6 +212,8 @@ class WorkflowService
      *   action  : pending at a post they hold
      *   waiting : awaiting the submitter's reply, at a post they hold
      *   earlier : passed through a post they hold and has since moved on or been disposed
+     *   below   : at or below a level (in its own type's route) whose post they hold; view only. Everyone
+     *             except the Director (who has 'all'), with their own post scope applied
      *   all     : every grievance (Director oversight only; the caller checks isDirector)
      * Filters: q (reference number or submitter name, part of it), type_id, overdue (true = overdue only).
      *
@@ -220,7 +243,7 @@ class WorkflowService
 
         $total = (int) $db->query("SELECT count(*) AS n FROM grievances g LEFT JOIN escalation_levels l ON l.id = g.current_level_id WHERE {$where}", $params)->getRow('n');
 
-        $order = in_array($tab, ['earlier', 'all'], true) ? 'g.updated_at DESC, g.id DESC' : 'overdue DESC, g.level_entered_at ASC, g.id ASC';
+        $order = in_array($tab, ['earlier', 'all', 'below'], true) ? 'g.updated_at DESC, g.id DESC' : 'overdue DESC, g.level_entered_at ASC, g.id ASC';
         $rows  = $db->query(
             "SELECT g.id, g.reference_no, g.subject, g.status, g.role, g.created_at, g.updated_at, g.level_entered_at,
                     g.submitter->>'name' AS submitter_name, t.name AS type_name,
@@ -248,12 +271,12 @@ class WorkflowService
         return ['rows' => $rows, 'total' => $total];
     }
 
-    /** @return array{action:int,waiting:int,earlier:int,overdue:int,all?:int} */
+    /** @return array{action:int,waiting:int,earlier:int,overdue:int,all?:int,below?:int} */
     public static function inboxCounts(int $userId): array
     {
         $db   = Database::connect();
         $out  = [];
-        $tabs = self::isDirector($userId) ? ['action', 'waiting', 'earlier', 'all'] : ['action', 'waiting', 'earlier'];
+        $tabs = self::isDirector($userId) ? ['action', 'waiting', 'earlier', 'all'] : ['action', 'waiting', 'earlier', 'below'];
         foreach ($tabs as $tab) {
             [$where, $params] = self::inboxWhere($userId, $tab);
             $out[$tab] = (int) $db->query("SELECT count(*) AS n FROM grievances g LEFT JOIN escalation_levels l ON l.id = g.current_level_id WHERE {$where}", $params)->getRow('n');
@@ -888,6 +911,7 @@ class WorkflowService
                   . self::holdsPostSql('g', 'ga.post_id') . ')';
 
         return match ($tab) {
+            'below'   => ['NOT g.archived AND ' . self::belowSql('g', 'l'), [$userId]],
             'waiting' => ["NOT g.archived AND g.status = 'awaiting_submitter' AND {$atMyPost}", [$userId]],
             'all'     => ['NOT g.archived', []],
             'earlier' => ["NOT g.archived AND {$passed} AND NOT (g.status <> 'disposed' AND {$atMyPost})", [$userId, $userId]],
